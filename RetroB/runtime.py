@@ -1,13 +1,12 @@
 # -*- coding: utf-8 -*-
-# runtime.py (VERSION EXTENDIDA - GUI Tkinter + Accesibilidad para Snake)
-# Uso: python3 runtime.py <archivo_juego.json>
+# runtime.py (VERSION EXTENDIDA - GUI Tkinter + Accesibilidad para Snake - Python 2.7)
+# Uso: python runtime.py <archivo_juego.json>
 
 import sys
 import json
 import random
 
 import Tkinter as tk
-import tkMessageBox as messagebox
 
 # El modulo winsound solo existe en Windows. Se protege el import para que
 # el runtime no se caiga si alguien lo prueba en otro sistema operativo;
@@ -18,11 +17,39 @@ try:
 except ImportError:
     AUDIO_DISPONIBLE = False
 
+# ----------------------------------------------------------------------
+# PALETA "RETRO ARCADE NEON"
+# ----------------------------------------------------------------------
+COLOR_BG = '#050510'
+COLOR_BG_PANEL = '#0b0b20'
+COLOR_NEON_CYAN = '#00FFF2'
+COLOR_NEON_MAGENTA = '#FF2BD6'
+COLOR_NEON_YELLOW = '#F9F002'
+COLOR_NEON_PURPLE = '#B967FF'
+COLOR_NEON_GREEN = '#39FF14'
+COLOR_NEON_RED = '#FF3860'
+COLOR_TEXT_DIM = '#6A6A90'
+COLOR_GRID_LINES = '#161632'
+
+
+def _atenuar_color(color_hex, factor):
+    """Oscurece un color hexadecimal (para simular el 'halo' del glow neon,
+    ya que Tkinter no soporta transparencia real en los rellenos)."""
+    color_hex = color_hex.lstrip('#')
+    r = int(int(color_hex[0:2], 16) * factor)
+    g = int(int(color_hex[2:4], 16) * factor)
+    b = int(int(color_hex[4:6], 16) * factor)
+    return '#%02X%02X%02X' % (r, g, b)
+
+
 # Colores por defecto si el .brick NO define STAGE_COLORS ni FRUIT
-# (garantiza que snake.brick original siga funcionando igual que antes)
-COLOR_SNAKE_CABEZA_DEFECTO = '#00FF00'
-COLOR_SNAKE_CUERPO_DEFECTO = '#33CC33'
-COLOR_FOOD_DEFECTO = '#FF0000'
+# (garantiza que snake.brick original siga funcionando igual que antes,
+# ahora con el look neon)
+COLOR_SNAKE_CABEZA_DEFECTO = COLOR_NEON_GREEN
+COLOR_SNAKE_CUERPO_DEFECTO = '#1FCF10'
+COLOR_FOOD_DEFECTO = COLOR_NEON_MAGENTA
+COLOR_GRID_FIJA = '#241640'
+COLOR_PIEZA = COLOR_NEON_CYAN
 
 
 class Juego:
@@ -41,6 +68,10 @@ class Juego:
         self.pausado = False
         self.silenciado = False
 
+        # NUEVO: parpadeo tipo arcade ("PRESS START") para textos de HUD
+        self.blink_contador = 0
+        self.blink_state = True
+
         # --- Configuracion de la GUI ---
         self.root = tk.Tk()
         self.root.title("BrickScript - " + self.tipo_juego)
@@ -50,37 +81,51 @@ class Juego:
         self.ancho_canvas = self.ancho * self.taman_celda
         self.alto_canvas = self.alto * self.taman_celda
 
-        self.canvas = tk.Canvas(self.root, width=self.ancho_canvas, height=self.alto_canvas, bg='#111111')
+        self.root.configure(bg=COLOR_BG)
+
+        self.canvas = tk.Canvas(self.root, width=self.ancho_canvas, height=self.alto_canvas,
+                                 bg=COLOR_BG, highlightthickness=0)
         self.canvas.pack(side=tk.LEFT, padx=10, pady=10)
 
-        self.marco_score = tk.Frame(self.root, width=190, height=self.alto_canvas, bg='#222222')
+        self.marco_score = tk.Frame(self.root, width=200, height=self.alto_canvas, bg=COLOR_BG_PANEL,
+                                     highlightbackground=COLOR_NEON_CYAN, highlightthickness=1)
         self.marco_score.pack(side=tk.RIGHT, fill=tk.Y, padx=10, pady=10)
 
-        self.label_score = tk.Label(self.marco_score, text="PUNTUACION\n0", bg='#222222', fg='white',
-                                     font=('Consolas', 16, 'bold'))
-        self.label_score.pack(pady=(30, 10), padx=10)
+        tk.Label(self.marco_score, text=u"\u25C6 BRICKSCRIPT \u25C6", bg=COLOR_BG_PANEL, fg=COLOR_NEON_CYAN,
+                 font=('Consolas', 13, 'bold')).pack(pady=(18, 6), padx=10)
+        tk.Frame(self.marco_score, height=2, bg=COLOR_NEON_MAGENTA).pack(fill=tk.X, padx=16, pady=(0, 16))
 
-        # NUEVO S07: racha
-        self.label_racha = tk.Label(self.marco_score, text="RACHA\n0", bg='#222222', fg='#FFD700',
-                                     font=('Consolas', 12, 'bold'))
-        self.label_racha.pack(pady=10, padx=10)
+        tk.Label(self.marco_score, text="PUNTUACION", bg=COLOR_BG_PANEL, fg=COLOR_TEXT_DIM,
+                 font=('Consolas', 9, 'bold')).pack(padx=10)
+        self.label_score = tk.Label(self.marco_score, text="000000", bg=COLOR_BG_PANEL, fg=COLOR_NEON_CYAN,
+                                     font=('Consolas', 22, 'bold'))
+        self.label_score.pack(pady=(0, 18), padx=10)
+
+        # NUEVO S07: racha (con barra ASCII estilo pixel-art)
+        tk.Label(self.marco_score, text="RACHA", bg=COLOR_BG_PANEL, fg=COLOR_TEXT_DIM,
+                 font=('Consolas', 9, 'bold')).pack(padx=10)
+        self.label_racha = tk.Label(self.marco_score, text="0", bg=COLOR_BG_PANEL, fg=COLOR_NEON_YELLOW,
+                                     font=('Consolas', 13, 'bold'), justify=tk.CENTER)
+        self.label_racha.pack(pady=(0, 18), padx=10)
 
         # NUEVO S03: contador de frutas consumidas por tipo
-        self.label_frutas = tk.Label(self.marco_score, text="", bg='#222222', fg='#AAAAAA',
+        self.label_frutas = tk.Label(self.marco_score, text="", bg=COLOR_BG_PANEL, fg=COLOR_NEON_PURPLE,
                                       font=('Consolas', 9), justify=tk.LEFT)
-        self.label_frutas.pack(pady=10, padx=10)
+        self.label_frutas.pack(pady=(0, 18), padx=10)
 
         # NUEVO: indicador de estado (silencio / efecto activo)
-        self.label_estado = tk.Label(self.marco_score, text="", bg='#222222', fg='#FF6666',
-                                      font=('Consolas', 10, 'bold'))
-        self.label_estado.pack(pady=10, padx=10)
+        self.label_estado = tk.Label(self.marco_score, text="", bg=COLOR_BG_PANEL, fg=COLOR_NEON_RED,
+                                      font=('Consolas', 9, 'bold'))
+        self.label_estado.pack(pady=(0, 12), padx=10)
+
+        tk.Frame(self.marco_score, height=2, bg=COLOR_NEON_MAGENTA).pack(fill=tk.X, padx=16, pady=(0, 12))
 
         self.label_controles = tk.Label(
             self.marco_score,
-            text="CONTROLES\nFlechas: Mover\nP: Pausa\nM: Silenciar",
-            bg='#222222', fg='gray', font=('Consolas', 10)
+            text=u"CONTROLES\n\u2191\u2193\u2190\u2192 Mover\nP  Pausa\nM  Silenciar",
+            bg=COLOR_BG_PANEL, fg=COLOR_TEXT_DIM, font=('Consolas', 9), justify=tk.LEFT
         )
-        self.label_controles.pack(pady=20, padx=10)
+        self.label_controles.pack(pady=10, padx=10)
 
         self.root.bind('<Key>', self.manejar_input_gui)
 
@@ -131,13 +176,17 @@ class Juego:
         self.root.mainloop()
 
     def game_loop(self):
-        if self.juego_terminado:
-            self.mostrar_game_over()
-            return
+        # NUEVO: contador para el parpadeo neon (PAUSA / GAME OVER),
+        # cambia de estado cada ~400ms (8 ciclos de 50ms)
+        self.blink_contador += 1
+        if self.blink_contador >= 8:
+            self.blink_contador = 0
+            self.blink_state = not self.blink_state
 
-        # NUEVO S09: si esta en pausa no se procesa logica de juego,
-        # pero se sigue dibujando para mostrar el overlay de "PAUSA"
-        if not self.pausado:
+        # NUEVO S09: si esta en pausa o el juego termino, no se procesa
+        # logica de juego, pero se sigue dibujando (overlay de PAUSA /
+        # pantalla de GAME OVER con parpadeo)
+        if not self.pausado and not self.juego_terminado:
             self.timer_gravedad += 0.05
             if self.timer_gravedad >= self.velocidad_gravedad:
                 self.timer_gravedad = 0
@@ -155,6 +204,13 @@ class Juego:
 
     def manejar_input_gui(self, event):
         key = event.keysym.upper()
+
+        # NUEVO: pantalla de GAME OVER estilo arcade, se cierra con
+        # ENTER / ESPACIO / ESC en vez del boton "Aceptar" de un dialogo
+        if self.juego_terminado:
+            if key in ('RETURN', 'SPACE', 'ESCAPE'):
+                self.cerrar_ventana()
+            return
 
         # NUEVO S09 / S08: pausa y silencio son controles globales de
         # accesibilidad, funcionan siempre, sin depender del .brick
@@ -185,15 +241,14 @@ class Juego:
 
     def dibujar(self):
         self.canvas.delete("all")
-        self.label_score.config(text="PUNTUACION\n" + str(self.puntuacion))
+        self.label_score.config(text=str(self.puntuacion).zfill(6))
 
-        COLOR_GRID_FIJA = '#343434'
-        COLOR_PIEZA = '#00FFFF'
+        self._dibujar_fondo_grid()
 
         for y in range(self.alto):
             for x in range(self.ancho):
                 if self.grid[y][x] == 1:
-                    self.dibujar_celda(x, y, COLOR_GRID_FIJA)
+                    self.dibujar_celda(x, y, COLOR_GRID_FIJA, glow=False)
 
         if self.tipo_juego == 'TETRIS' and self.pieza_actual:
             matriz_pieza = self.pieza_actual[self.pieza_rotacion]
@@ -204,12 +259,40 @@ class Juego:
 
         if self.tipo_juego == 'SNAKE':
             self._dibujar_snake()
-            self.label_racha.config(text="RACHA\n" + str(self.racha_actual))
+            self.label_racha.config(text=str(self.racha_actual) + "\n" + self._texto_barra_racha())
             self.label_frutas.config(text=self._texto_contador_frutas())
             self.label_estado.config(text=self._texto_estado())
 
-        if self.pausado:
+        # NUEVO: textura sutil tipo pantalla CRT sobre todo el tablero
+        self.canvas.create_rectangle(0, 0, self.ancho_canvas, self.alto_canvas,
+                                      fill=COLOR_BG, stipple='gray12', outline='')
+
+        self._dibujar_marco_hud()
+
+        if self.pausado and not self.juego_terminado:
             self._dibujar_overlay_pausa()
+
+        if self.juego_terminado:
+            self._dibujar_overlay_game_over()
+
+    def _dibujar_fondo_grid(self):
+        """NUEVO: fondo negro con cuadricula tenue, look pantalla de arcade."""
+        self.canvas.create_rectangle(0, 0, self.ancho_canvas, self.alto_canvas, fill=COLOR_BG, outline='')
+        ts = self.taman_celda
+        for gx in range(0, self.ancho + 1):
+            self.canvas.create_line(gx * ts, 0, gx * ts, self.alto_canvas, fill=COLOR_GRID_LINES)
+        for gy in range(0, self.alto + 1):
+            self.canvas.create_line(0, gy * ts, self.ancho_canvas, gy * ts, fill=COLOR_GRID_LINES)
+
+    def _dibujar_marco_hud(self):
+        """NUEVO: borde neon + esquinas estilo HUD de arcade alrededor del tablero."""
+        w, h = self.ancho_canvas, self.alto_canvas
+        self.canvas.create_rectangle(2, 2, w - 2, h - 2, outline=COLOR_NEON_CYAN, width=2)
+        largo = 14
+        esquinas = [(2, 2, 1, 1), (w - 2, 2, -1, 1), (2, h - 2, 1, -1), (w - 2, h - 2, -1, -1)]
+        for cx, cy, dx, dy in esquinas:
+            self.canvas.create_line(cx, cy, cx + largo * dx, cy, fill=COLOR_NEON_MAGENTA, width=3)
+            self.canvas.create_line(cx, cy, cx, cy + largo * dy, fill=COLOR_NEON_MAGENTA, width=3)
 
     def _dibujar_snake(self):
         # S04-S06: la comida se dibuja con el color y el patron de su tipo de fruta
@@ -239,11 +322,22 @@ class Juego:
         # Retrocompatibilidad: si el .brick no trae STAGE_COLORS, colores clasicos
         return COLOR_SNAKE_CABEZA_DEFECTO, COLOR_SNAKE_CUERPO_DEFECTO
 
-    def dibujar_celda(self, x, y, color, patron=None):
+    def dibujar_celda(self, x, y, color, patron=None, glow=True):
         ts = self.taman_celda
         x1, y1 = x * ts, y * ts
         x2, y2 = x1 + ts, y1 + ts
-        self.canvas.create_rectangle(x1, y1, x2, y2, fill=color, outline='#000000')
+
+        # NUEVO: efecto glow neon. Tkinter no soporta transparencia real,
+        # asi que se simula dibujando 2 capas concentricas mas oscuras
+        # detras de la celda principal (un "halo" que se funde con el fondo).
+        if glow:
+            halo_ext = _atenuar_color(color, 0.22)
+            halo_med = _atenuar_color(color, 0.45)
+            self.canvas.create_rectangle(x1 - 3, y1 - 3, x2 + 3, y2 + 3, fill=halo_ext, outline='')
+            self.canvas.create_rectangle(x1 - 1, y1 - 1, x2 + 1, y2 + 1, fill=halo_med, outline='')
+
+        # Margen de 1px entre celdas para dar el efecto "bloques" pixel-art
+        self.canvas.create_rectangle(x1 + 1, y1 + 1, x2 - 1, y2 - 1, fill=color, outline=COLOR_BG, width=1)
 
         # NUEVO: patrones dentro de la celda ademas del color (S02 / S06 /
         # rediseno visual). Ayuda tambien a usuarios con daltonismo, ya que
@@ -251,19 +345,47 @@ class Juego:
         if patron == 'STRIPES':
             for i in (1, 2):
                 ly = y1 + (i * ts // 3)
-                self.canvas.create_line(x1, ly, x2, ly, fill='#000000', width=1)
+                self.canvas.create_line(x1 + 2, ly, x2 - 2, ly, fill=COLOR_BG, width=1)
         elif patron == 'DOTS':
             cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
             r = ts // 6
-            self.canvas.create_oval(cx - r, cy - r, cx + r, cy + r, fill='#000000', outline='')
+            self.canvas.create_oval(cx - r, cy - r, cx + r, cy + r, fill=COLOR_BG, outline='')
 
     def _dibujar_overlay_pausa(self):
-        self.canvas.create_rectangle(0, 0, self.ancho_canvas, self.alto_canvas, fill='#000000', stipple='gray50')
+        self.canvas.create_rectangle(0, 0, self.ancho_canvas, self.alto_canvas,
+                                      fill=COLOR_BG, stipple='gray50', outline='')
+        color = COLOR_NEON_YELLOW if self.blink_state else _atenuar_color(COLOR_NEON_YELLOW, 0.35)
         self.canvas.create_text(
             self.ancho_canvas // 2, self.alto_canvas // 2,
-            text="PAUSA\n(presiona P para continuar)",
-            fill='white', font=('Consolas', 14, 'bold'), justify=tk.CENTER
+            text=u"\u25A0 PAUSA \u25A0\n\nP para continuar",
+            fill=color, font=('Consolas', 16, 'bold'), justify=tk.CENTER
         )
+
+    def _dibujar_overlay_game_over(self):
+        """NUEVO: pantalla de GAME OVER dibujada en el canvas (estilo arcade),
+        en vez del tkMessageBox nativo de Windows que rompia la ambientacion."""
+        self.canvas.create_rectangle(0, 0, self.ancho_canvas, self.alto_canvas,
+                                      fill=COLOR_BG, stipple='gray25', outline='')
+        color_titulo = COLOR_NEON_RED if self.blink_state else _atenuar_color(COLOR_NEON_RED, 0.3)
+        cx = self.ancho_canvas // 2
+        cy = self.alto_canvas // 2
+        self.canvas.create_text(cx, cy - 22, text="GAME OVER", fill=color_titulo,
+                                 font=('Consolas', 22, 'bold'))
+        self.canvas.create_text(cx, cy + 14, text="PUNTUACION: " + str(self.puntuacion),
+                                 fill=COLOR_NEON_CYAN, font=('Consolas', 12, 'bold'))
+        self.canvas.create_text(cx, cy + 42, text="ENTER para salir",
+                                 fill=COLOR_TEXT_DIM, font=('Consolas', 10))
+
+    def _texto_barra_racha(self):
+        """NUEVO S07: barra de progreso ASCII (bloques) hacia el bono de racha."""
+        if not self.streak_target:
+            return ""
+        progreso = self.racha_actual % self.streak_target
+        if self.racha_actual > 0 and progreso == 0:
+            progreso = self.streak_target
+        longitud_barra = 10
+        llenos = min(int((progreso / float(self.streak_target)) * longitud_barra), longitud_barra)
+        return u'\u2588' * llenos + u'\u2591' * (longitud_barra - llenos)
 
     def _texto_contador_frutas(self):
         if not self.contador_frutas:
@@ -491,19 +613,9 @@ class Juego:
                 # juego no debe interrumpirse por esto.
                 pass
 
-    # ------------------------------------------------------------------
-    # SALIDA
-    # ------------------------------------------------------------------
-
-    def mostrar_game_over(self):
-        messagebox.showinfo("Juego Terminado", "Puntuacion Final: " + str(self.puntuacion))
-        self.root.destroy()
-        sys.exit(0)
-
-
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        print("Uso: python3 runtime.py <archivo_juego.json>")
+        print("Uso: python runtime.py <archivo_juego.json>")
         sys.exit(1)
     archivo_juego = sys.argv[1]
     try:
