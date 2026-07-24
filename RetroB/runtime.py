@@ -6,8 +6,8 @@ import sys
 import json
 import random
 
-import tkinter as tk
-from tkinter import messagebox
+import Tkinter as tk
+import tkMessageBox as messagebox
 
 # El modulo winsound solo existe en Windows. Se protege el import para que
 # el runtime no se caiga si alguien lo prueba en otro sistema operativo;
