@@ -1,9 +1,17 @@
-<programa> ::= <tipo_juego> <grid> <definiciones> <eventos>
+<programa> ::= <tipo_juego> <grid> <config_opcional> <definiciones> <eventos>
 
 <tipo_juego> ::= "GAME_TYPE" "SNAKE"
 <grid>       ::= "GAME_GRID" "(" <numero> "," <numero> ")"
-<definiciones> ::= <definicion_shape> | <definicion_shape> <definiciones>
-<eventos>    ::= <evento> | <evento> <eventos>
+
+<!-- NUEVO: bloque de configuracion global, opcional para retrocompatibilidad -->
+<config_opcional>   ::= <config> | <config> <config_opcional> | ""
+<config>            ::= <config_tick> | <config_streak>
+<config_tick>        ::= "TICK_MULTIPLIER" ":" <decimal>
+<config_streak>       ::= "STREAK_TARGET" ":" <numero>
+
+<definiciones> ::= <definicion> | <definicion> <definiciones>
+<!-- NUEVO: ahora una definicion puede ser shape, fruit o stage_colors -->
+<definicion>   ::= <definicion_shape> | <definicion_fruit> | <definicion_stage_colors>
 
 <definicion_shape> ::= "DEFINE" "SHAPE" <identificador> ":" <estados> "END"
 <estados>          ::= <estado> | <estado> <estados>
@@ -12,11 +20,33 @@
 <fila>             ::= "[" <valores_fila> "]"
 <valores_fila>     ::= <numero> | <numero> "," <valores_fila>
 
-<evento>         ::= "ON" <nombre_evento_snake> ":" <acciones_snake> "END"
-<nombre_evento_snake> ::= "START" | "TICK" | "EAT_FOOD" | "COLLISION_WALL" | "COLLISION_SELF" | "KEY_UP" | "KEY_DOWN" | "KEY_LEFT" | "KEY_RIGHT"
-<acciones_snake>     ::= <accion_snake> | <accion_snake> <acciones_snake>
+<!-- NUEVO: S04, S05, S06 - Tipos de fruta con puntaje y diseno distinto -->
+<definicion_fruit> ::= "DEFINE" "FRUIT" <identificador> ":" <atributos_fruit> "END"
+<atributos_fruit>  ::= <atributo_fruit> | <atributo_fruit> <atributos_fruit>
+<atributo_fruit>   ::= <fruit_color> | <fruit_score> | <fruit_pattern> | <fruit_effect> | <fruit_duration>
+<fruit_color>      ::= "COLOR" ":" <color_hex>
+<fruit_score>      ::= "SCORE" ":" <numero>
+<fruit_pattern>    ::= "PATTERN" ":" ("SOLID" | "STRIPES" | "DOTS")
+<fruit_effect>     ::= "EFFECT" ":" ("NONE" | "SPEED_BOOST" | "SLOW_TIME" | "DOUBLE_POINTS")
+<fruit_duration>   ::= "LIFETIME" ":" <numero>
 
-<accion_snake> ::= <accion_spawn_jugador> | <accion_spawn_comida> | <accion_mover> | <accion_direccion> | <accion_puntos> | <accion_crecer> | <accion_gameover>
+<!-- NUEVO: S01 - Estimulos visuales por etapa (color de la serpiente segun tamano/racha) -->
+<definicion_stage_colors> ::= "DEFINE" "STAGE_COLORS" ":" <stages> "END"
+<stages>                  ::= <stage> | <stage> <stages>
+<stage>                   ::= "STAGE" "(" <numero> "," <numero> ")" ":" <color_hex>
+
+<eventos>    ::= <evento> | <evento> <eventos>
+<evento>         ::= "ON" <nombre_evento_snake> ":" <acciones_snake> "END"
+<!-- NUEVO: se agregan PAUSE, RESUME, MUTE, STREAK_UPDATE como eventos disparables -->
+<nombre_evento_snake> ::= "START" | "TICK" | "EAT_FOOD" | "COLLISION_WALL" | "COLLISION_SELF"
+                         | "KEY_UP" | "KEY_DOWN" | "KEY_LEFT" | "KEY_RIGHT"
+                         | "KEY_P" | "KEY_M" | "STREAK_UPDATE"
+
+<acciones_snake>     ::= <accion_snake> | <accion_snake> <acciones_snake>
+<accion_snake> ::= <accion_spawn_jugador> | <accion_spawn_comida> | <accion_mover>
+                  | <accion_direccion> | <accion_puntos> | <accion_crecer> | <accion_gameover>
+                  | <accion_pausa> | <accion_silenciar> | <accion_sonido>
+
 <accion_spawn_jugador> ::= "SPAWN" "PLAYER" "AT" <coordenadas>
 <accion_spawn_comida>  ::= "SPAWN" "FOOD" "AT" "RANDOM"
 <accion_mover>         ::= "MOVE" "PLAYER" "FORWARD"
@@ -25,9 +55,18 @@
 <accion_crecer>        ::= "GROW" "PLAYER" <numero>
 <accion_gameover>      ::= "GAME_OVER"
 
+<!-- NUEVO: Pausa / Silenciar / Audio (S08, S09, S10) -->
+<accion_pausa>      ::= "TOGGLE_PAUSE"
+<accion_silenciar>  ::= "TOGGLE_MUTE"
+<accion_sonido>     ::= "PLAY_SOUND" <cadena_texto>
+
 <coordenadas>   ::= "(" <numero> "," <numero> ")"
 <direccion>     ::= "UP" | "DOWN" | "LEFT" | "RIGHT"
 <identificador> ::= <letra> | <letra> <identificador>
 <numero>        ::= <digito> | <digito> <numero>
+<decimal>       ::= <numero> "." <numero>
+<color_hex>     ::= "#" <hexdigito> <hexdigito> <hexdigito> <hexdigito> <hexdigito> <hexdigito>
+<cadena_texto>  ::= '"' <caracteres> '"'
 <letra>         ::= "A"..."Z" | "_"
 <digito>        ::= "0"..."9"
+<hexdigito>     ::= "0"..."9" | "A"..."F"
