@@ -1,17 +1,52 @@
 {
-  "stage_colors": [], 
-  "shapes": {
-    "PIXEL": [
-      [
-        [
-          1
-        ]
-      ]
-    ]
-  }, 
+  "stage_colors": [
+    {
+      "rango": [
+        0, 
+        5
+      ], 
+      "color": "#39FF14"
+    }, 
+    {
+      "rango": [
+        6, 
+        12
+      ], 
+      "color": "#FF3860"
+    }, 
+    {
+      "rango": [
+        13, 
+        999
+      ], 
+      "color": "RAINBOW"
+    }
+  ], 
+  "shapes": {}, 
   "tipo_juego": "SNAKE", 
-  "fruits": {}, 
+  "fruits": {
+    "DORADA": {
+      "color": "#F9F002", 
+      "pattern": "STRIPES", 
+      "score": 5, 
+      "effect": "DOUBLE_POINTS"
+    }, 
+    "MANZANA": {
+      "color": "#FF3860", 
+      "pattern": "SOLID", 
+      "score": 1, 
+      "effect": "NONE"
+    }, 
+    "ARANDANO": {
+      "color": "#00FFF2", 
+      "pattern": "DOTS", 
+      "score": 3, 
+      "effect": "SPEED_BOOST"
+    }
+  }, 
   "config": {
+    "streak_target": 5, 
+    "tick_multiplier": 1.0, 
     "grid_size": [
       18, 
       18
@@ -27,23 +62,18 @@
     ], 
     "ON_EAT_FOOD": [
       {
-        "params": [], 
-        "accion": "INCREASE_SCORE", 
-        "objeto": "10"
-      }, 
-      {
-        "params": [
-          "1"
-        ], 
-        "accion": "GROW", 
-        "objeto": "PLAYER"
-      }, 
-      {
         "params": [
           "RANDOM"
         ], 
         "accion": "SPAWN", 
         "objeto": "FOOD"
+      }, 
+      {
+        "params": [
+          "eat.wav"
+        ], 
+        "accion": "PLAY_SOUND", 
+        "objeto": null
       }
     ], 
     "ON_KEY_RIGHT": [
@@ -64,12 +94,26 @@
     ], 
     "ON_COLLISION_WALL": [
       {
+        "params": [
+          "gameover.wav"
+        ], 
+        "accion": "PLAY_SOUND", 
+        "objeto": null
+      }, 
+      {
         "params": [], 
         "accion": "GAME_OVER", 
         "objeto": null
       }
     ], 
     "ON_COLLISION_SELF": [
+      {
+        "params": [
+          "gameover.wav"
+        ], 
+        "accion": "PLAY_SOUND", 
+        "objeto": null
+      }, 
       {
         "params": [], 
         "accion": "GAME_OVER", 

@@ -5,6 +5,7 @@
 import sys
 import json
 import random
+import colorsys
 
 import Tkinter as tk
 
@@ -157,6 +158,9 @@ class Juego:
             # NUEVO S01: colores de la serpiente segun etapa (tamano del cuerpo)
             self.stage_colors = self.datos_juego.get('stage_colors', [])
 
+            # NUEVO: fase de animacion para la etapa "RAINBOW" (arcoiris que fluye)
+            self.rainbow_offset = 0.0
+
             # NUEVO: efecto temporal activado por frutas especiales (EFFECT)
             self.efecto_activo = None
             self.efecto_ticks_restantes = 0
@@ -192,6 +196,10 @@ class Juego:
                 self.timer_gravedad = 0
                 self.ejecutar_evento('ON_TICK')
                 self._actualizar_efecto_temporal()
+
+            # NUEVO: el arcoiris fluye con el tiempo, no solo con el movimiento
+            if self.tipo_juego == 'SNAKE':
+                self.rainbow_offset = (self.rainbow_offset + 0.015) % 1.0
 
         self.dibujar()
         self.timer_id = self.root.after(50, self.game_loop)
@@ -303,24 +311,38 @@ class Juego:
             self.dibujar_celda(x, y, color, patron)
 
         # S01: color de la serpiente segun la etapa actual (tamano del cuerpo)
-        color_cabeza, color_cuerpo = self._colores_actuales_snake()
+        color_etapa = self._color_etapa_actual()
+        total_segmentos = len(self.serpiente_cuerpo)
         for i, segmento in enumerate(self.serpiente_cuerpo):
             x, y = segmento
-            color = color_cabeza if i == 0 else color_cuerpo
+            if color_etapa == 'RAINBOW':
+                # NUEVO: cada segmento tiene su propio tono, animado con el tiempo
+                color = self._color_arcoiris(i, total_segmentos)
+            elif color_etapa:
+                color = color_etapa
+            else:
+                # Retrocompatibilidad: sin STAGE_COLORS definido
+                color = COLOR_SNAKE_CABEZA_DEFECTO if i == 0 else COLOR_SNAKE_CUERPO_DEFECTO
             # S02: puntos decorativos en el cuerpo (cada 3 segmentos)
             patron = 'DOTS' if i > 0 and i % 3 == 0 else None
             self.dibujar_celda(x, y, color, patron)
 
-    def _colores_actuales_snake(self):
-        """S01: determina el color de la serpiente segun su longitud actual."""
+    def _color_etapa_actual(self):
+        """S01: devuelve el color (o el texto 'RAINBOW') de la etapa segun
+        la longitud actual de la serpiente. None si no hay STAGE_COLORS."""
         longitud = len(self.serpiente_cuerpo)
         for etapa in self.stage_colors:
             minimo, maximo = etapa['rango']
             if minimo <= longitud <= maximo:
-                color = etapa['color']
-                return color, color
-        # Retrocompatibilidad: si el .brick no trae STAGE_COLORS, colores clasicos
-        return COLOR_SNAKE_CABEZA_DEFECTO, COLOR_SNAKE_CUERPO_DEFECTO
+                return etapa['color']
+        return None
+
+    def _color_arcoiris(self, indice, total):
+        """NUEVO: genera un color HSV distinto por segmento y lo anima con
+        self.rainbow_offset para que el arcoiris parezca fluir."""
+        hue = (indice / float(max(total, 1)) + self.rainbow_offset) % 1.0
+        r, g, b = colorsys.hsv_to_rgb(hue, 1.0, 1.0)
+        return '#%02X%02X%02X' % (int(r * 255), int(g * 255), int(b * 255))
 
     def dibujar_celda(self, x, y, color, patron=None, glow=True):
         ts = self.taman_celda

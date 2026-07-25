@@ -1,50 +1,91 @@
-# snake.brick
 GAME_TYPE SNAKE
-
 GAME_GRID (18, 18)
 
-# --- Definicion de Elementos ---
-DEFINE SHAPE PIXEL:
-  STATE 1:
-    [1]
+# Cada cuantas frutas seguidas se otorga el bono de racha (x1.5 puntos)
+STREAK_TARGET: 5
+
+# Multiplicador de velocidad base (1.0 = normal, <1.0 = mas rapido, >1.0 = mas lento)
+TICK_MULTIPLIER: 1.0
+
+
+# -------------------------------------------------------------
+# TIPOS DE FRUTA (S03-S06)
+# -------------------------------------------------------------
+
+DEFINE FRUIT MANZANA:
+    COLOR: #FF3860
+    SCORE: 1
+    PATTERN: SOLID
+    EFFECT: NONE
 END
 
-# --- Logica y Reglas ---
+DEFINE FRUIT DORADA:
+    COLOR: #F9F002
+    SCORE: 5
+    PATTERN: STRIPES
+    EFFECT: DOUBLE_POINTS
+END
+
+DEFINE FRUIT ARANDANO:
+    COLOR: #00FFF2
+    SCORE: 3
+    PATTERN: DOTS
+    EFFECT: SPEED_BOOST
+END
+
+
+# -------------------------------------------------------------
+# COLORES DE LA SERPIENTE SEGUN ETAPA (S01)
+# Pequena = verde, mediana = roja, grande = arcoiris animado
+# -------------------------------------------------------------
+
+DEFINE STAGE_COLORS:
+    STAGE(0,5): #39FF14
+    STAGE(6,12): #FF3860
+    STAGE(13,999): RAINBOW
+END
+
+
+# -------------------------------------------------------------
+# EVENTOS
+# -------------------------------------------------------------
+
 ON START:
-  SPAWN PLAYER AT (9, 9)
-  SPAWN FOOD AT RANDOM
+    SPAWN PLAYER AT (9,9)
+    SPAWN FOOD AT RANDOM
 END
 
-# ON_TICK es un evento que se ejecuta en cada ciclo del juego
 ON TICK:
-  MOVE PLAYER FORWARD
+    MOVE PLAYER FORWARD
 END
 
-# Evento para cuando la serpiente come
 ON EAT_FOOD:
-  INCREASE_SCORE 10
-  GROW PLAYER 1
-  SPAWN FOOD AT RANDOM
+    SPAWN FOOD AT RANDOM
+    PLAY_SOUND "eat.wav"
 END
 
-# Eventos de fin de juego
 ON COLLISION_WALL:
-  GAME_OVER
-END
-ON COLLISION_SELF:
-  GAME_OVER
+    PLAY_SOUND "gameover.wav"
+    GAME_OVER
 END
 
-# --- Controles ---
+ON COLLISION_SELF:
+    PLAY_SOUND "gameover.wav"
+    GAME_OVER
+END
+
 ON KEY_UP:
-  SET_DIRECTION UP
+    SET_DIRECTION UP
 END
+
 ON KEY_DOWN:
-  SET_DIRECTION DOWN
+    SET_DIRECTION DOWN
 END
+
 ON KEY_LEFT:
-  SET_DIRECTION LEFT
+    SET_DIRECTION LEFT
 END
+
 ON KEY_RIGHT:
-  SET_DIRECTION RIGHT
+    SET_DIRECTION RIGHT
 END
