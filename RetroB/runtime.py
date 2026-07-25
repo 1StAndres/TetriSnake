@@ -172,12 +172,19 @@ class Juego:
         self.velocidad_gravedad *= config.get('tick_multiplier', 1.0)
 
         self.timer_gravedad = 0
-        self.ejecutar_evento('ON_START')
+        # NUEVO: pantalla de inicio - el juego no arranca (ni ejecuta
+        # ON_START) hasta que el jugador presione ENTER
+        self.juego_iniciado = False
         self.timer_id = None
 
     def run(self):
         self.root.after(50, self.game_loop)
         self.root.mainloop()
+
+    def iniciar_juego(self):
+        """NUEVO: se llama al presionar ENTER en la pantalla de inicio."""
+        self.juego_iniciado = True
+        self.ejecutar_evento('ON_START')
 
     def game_loop(self):
         # NUEVO: contador para el parpadeo neon (PAUSA / GAME OVER),
@@ -187,10 +194,10 @@ class Juego:
             self.blink_contador = 0
             self.blink_state = not self.blink_state
 
-        # NUEVO S09: si esta en pausa o el juego termino, no se procesa
-        # logica de juego, pero se sigue dibujando (overlay de PAUSA /
-        # pantalla de GAME OVER con parpadeo)
-        if not self.pausado and not self.juego_terminado:
+        # NUEVO S09: si no ha iniciado, esta en pausa, o el juego termino,
+        # no se procesa logica de juego, pero se sigue dibujando (pantalla
+        # de inicio / overlay de PAUSA / pantalla de GAME OVER)
+        if self.juego_iniciado and not self.pausado and not self.juego_terminado:
             self.timer_gravedad += 0.05
             if self.timer_gravedad >= self.velocidad_gravedad:
                 self.timer_gravedad = 0
@@ -212,6 +219,12 @@ class Juego:
 
     def manejar_input_gui(self, event):
         key = event.keysym.upper()
+
+        # NUEVO: pantalla de inicio, se espera ENTER o ESPACIO para arrancar
+        if not self.juego_iniciado:
+            if key in ('RETURN', 'SPACE'):
+                self.iniciar_juego()
+            return
 
         # NUEVO: pantalla de GAME OVER estilo arcade, se cierra con
         # ENTER / ESPACIO / ESC en vez del boton "Aceptar" de un dialogo
@@ -277,10 +290,11 @@ class Juego:
 
         self._dibujar_marco_hud()
 
-        if self.pausado and not self.juego_terminado:
+        if not self.juego_iniciado:
+            self._dibujar_overlay_inicio()
+        elif self.pausado and not self.juego_terminado:
             self._dibujar_overlay_pausa()
-
-        if self.juego_terminado:
+        elif self.juego_terminado:
             self._dibujar_overlay_game_over()
 
     def _dibujar_fondo_grid(self):
@@ -372,6 +386,20 @@ class Juego:
             cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
             r = ts // 6
             self.canvas.create_oval(cx - r, cy - r, cx + r, cy + r, fill=COLOR_BG, outline='')
+
+    def _dibujar_overlay_inicio(self):
+        """NUEVO: pantalla de bienvenida, se muestra hasta que se presiona ENTER."""
+        self.canvas.create_rectangle(0, 0, self.ancho_canvas, self.alto_canvas,
+                                      fill=COLOR_BG, stipple='gray25', outline='')
+        cx = self.ancho_canvas // 2
+        cy = self.alto_canvas // 2
+        self.canvas.create_text(cx, cy - 40, text=self.tipo_juego,
+                                 fill=COLOR_NEON_CYAN, font=('Consolas', 24, 'bold'))
+        color = COLOR_NEON_YELLOW if self.blink_state else _atenuar_color(COLOR_NEON_YELLOW, 0.3)
+        self.canvas.create_text(cx, cy + 6, text="PRESIONA ENTER PARA JUGAR",
+                                 fill=color, font=('Consolas', 12, 'bold'))
+        self.canvas.create_text(cx, cy + 40, text="Flechas: Mover   P: Pausa   M: Silenciar",
+                                 fill=COLOR_TEXT_DIM, font=('Consolas', 9))
 
     def _dibujar_overlay_pausa(self):
         self.canvas.create_rectangle(0, 0, self.ancho_canvas, self.alto_canvas,
