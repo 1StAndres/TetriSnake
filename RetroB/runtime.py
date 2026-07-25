@@ -69,9 +69,17 @@ class Juego:
         self.pausado = False
         self.silenciado = False
 
+        # NUEVO: musica de fondo. Se recuerda que pista se pidio (para poder
+        # reanudarla tras un efecto de sonido o al desactivar el silencio)
+        self.musica_solicitada = None
+        self.musica_activa = False
+
         # NUEVO: parpadeo tipo arcade ("PRESS START") para textos de HUD
         self.blink_contador = 0
         self.blink_state = True
+
+        # NUEVO: opcion seleccionada en el menu de GAME OVER (0=REINTENTAR, 1=SALIR)
+        self.opcion_game_over = 0
 
         # --- Configuracion de la GUI ---
         self.root = tk.Tk()
@@ -167,9 +175,11 @@ class Juego:
 
             self.velocidad_gravedad = 0.15
 
-        # NUEVO: TICK_MULTIPLIER opcional (config global del .brick)
-        self.velocidad_base = self.velocidad_gravedad
+        # NUEVO: TICK_MULTIPLIER opcional (config global del .brick). Se
+        # aplica primero, y LUEGO se guarda como base, para que tanto los
+        # efectos de fruta como el reinicio (retry) respeten ese multiplicador.
         self.velocidad_gravedad *= config.get('tick_multiplier', 1.0)
+        self.velocidad_base = self.velocidad_gravedad
 
         self.timer_gravedad = 0
         # NUEVO: pantalla de inicio - el juego no arranca (ni ejecuta
@@ -184,6 +194,37 @@ class Juego:
     def iniciar_juego(self):
         """NUEVO: se llama al presionar ENTER en la pantalla de inicio."""
         self.juego_iniciado = True
+        self.ejecutar_evento('ON_START')
+
+    def reiniciar_juego(self):
+        """NUEVO: reinicia el estado del juego para intentar de nuevo,
+        sin cerrar la ventana (opcion REINTENTAR del menu de GAME OVER)."""
+        self.detener_musica()
+        self.puntuacion = 0
+        self.juego_terminado = False
+        self.pausado = False
+        self.opcion_game_over = 0
+        self.timer_gravedad = 0
+        self.velocidad_gravedad = self.velocidad_base
+        self.grid = [[0 for _ in range(self.ancho)] for _ in range(self.alto)]
+
+        if self.tipo_juego == 'TETRIS':
+            self.pieza_actual = None
+            self.pieza_x, self.pieza_y, self.pieza_rotacion = 0, 0, 0
+
+        if self.tipo_juego == 'SNAKE':
+            self.serpiente_cuerpo = []
+            self.serpiente_direccion = (1, 0)
+            self.posicion_comida = None
+            self.fruta_actual = None
+            self.contador_frutas = {}
+            self.racha_actual = 0
+            self.rainbow_offset = 0.0
+            self.efecto_activo = None
+            self.efecto_ticks_restantes = 0
+
+        # Reutiliza ON_START tal cual (vuelve a spawnear jugador/comida,
+        # y si el .brick tiene PLAY_MUSIC, la musica arranca de nuevo)
         self.ejecutar_evento('ON_START')
 
     def game_loop(self):
@@ -212,6 +253,7 @@ class Juego:
         self.timer_id = self.root.after(50, self.game_loop)
 
     def cerrar_ventana(self):
+        self.detener_musica()
         if self.timer_id:
             self.root.after_cancel(self.timer_id)
         self.root.destroy()
@@ -226,10 +268,17 @@ class Juego:
                 self.iniciar_juego()
             return
 
-        # NUEVO: pantalla de GAME OVER estilo arcade, se cierra con
-        # ENTER / ESPACIO / ESC en vez del boton "Aceptar" de un dialogo
+        # NUEVO: menu de GAME OVER estilo arcade (REINTENTAR / SALIR),
+        # navegable con flechas y confirmado con ENTER/ESPACIO
         if self.juego_terminado:
-            if key in ('RETURN', 'SPACE', 'ESCAPE'):
+            if key in ('LEFT', 'RIGHT', 'UP', 'DOWN'):
+                self.opcion_game_over = 1 - self.opcion_game_over
+            elif key in ('RETURN', 'SPACE'):
+                if self.opcion_game_over == 0:
+                    self.reiniciar_juego()
+                else:
+                    self.cerrar_ventana()
+            elif key == 'ESCAPE':
                 self.cerrar_ventana()
             return
 
@@ -412,19 +461,35 @@ class Juego:
         )
 
     def _dibujar_overlay_game_over(self):
-        """NUEVO: pantalla de GAME OVER dibujada en el canvas (estilo arcade),
-        en vez del tkMessageBox nativo de Windows que rompia la ambientacion."""
+        """NUEVO: pantalla de GAME OVER con menu REINTENTAR/SALIR dibujado
+        en el canvas (estilo arcade), en vez de un dialogo nativo de Windows
+        que rompia la ambientacion y solo permitia cerrar."""
         self.canvas.create_rectangle(0, 0, self.ancho_canvas, self.alto_canvas,
                                       fill=COLOR_BG, stipple='gray25', outline='')
         color_titulo = COLOR_NEON_RED if self.blink_state else _atenuar_color(COLOR_NEON_RED, 0.3)
         cx = self.ancho_canvas // 2
         cy = self.alto_canvas // 2
-        self.canvas.create_text(cx, cy - 22, text="GAME OVER", fill=color_titulo,
+
+        self.canvas.create_text(cx, cy - 50, text="GAME OVER", fill=color_titulo,
                                  font=('Consolas', 22, 'bold'))
-        self.canvas.create_text(cx, cy + 14, text="PUNTUACION: " + str(self.puntuacion),
+        self.canvas.create_text(cx, cy - 16, text="PUNTUACION: " + str(self.puntuacion),
                                  fill=COLOR_NEON_CYAN, font=('Consolas', 12, 'bold'))
-        self.canvas.create_text(cx, cy + 42, text="ENTER para salir",
-                                 fill=COLOR_TEXT_DIM, font=('Consolas', 10))
+
+        opciones = [("REINTENTAR", 0), ("SALIR", 1)]
+        y_opcion = cy + 22
+        for texto, indice in opciones:
+            if indice == self.opcion_game_over:
+                color = COLOR_NEON_YELLOW if self.blink_state else _atenuar_color(COLOR_NEON_YELLOW, 0.4)
+                texto_mostrado = u"\u25B6 " + texto + u" \u25C0"
+            else:
+                color = COLOR_TEXT_DIM
+                texto_mostrado = texto
+            self.canvas.create_text(cx, y_opcion, text=texto_mostrado, fill=color,
+                                     font=('Consolas', 13, 'bold'))
+            y_opcion += 26
+
+        self.canvas.create_text(cx, y_opcion + 8, text=u"\u2190 \u2192 Elegir    ENTER Confirmar",
+                                 fill=COLOR_TEXT_DIM, font=('Consolas', 9))
 
     def _texto_barra_racha(self):
         """NUEVO S07: barra de progreso ASCII (bloques) hacia el bono de racha."""
@@ -463,13 +528,16 @@ class Juego:
                 verbo, objeto = accion.get('accion'), accion.get('objeto')
 
                 if verbo == 'INCREASE_SCORE': self.puntuacion += int(objeto)
-                if verbo == 'GAME_OVER': self.juego_terminado = True
+                if verbo == 'GAME_OVER':
+                    self.juego_terminado = True
+                    self.detener_musica()  # deja el canal libre para el sonido de derrota
 
                 # NUEVO: acciones de accesibilidad, disponibles en cualquier
                 # evento y cualquier tipo de juego (S08, S09, S10)
                 if verbo == 'TOGGLE_PAUSE': self.snake_toggle_pausa()
                 if verbo == 'TOGGLE_MUTE': self.snake_toggle_mute()
                 if verbo == 'PLAY_SOUND': self.reproducir_sonido(accion['params'][0])
+                if verbo == 'PLAY_MUSIC': self.reproducir_musica(accion['params'][0])
 
                 if self.tipo_juego == 'TETRIS':
                     if verbo == 'SPAWN': self.tetris_spawn_pieza()
@@ -650,18 +718,57 @@ class Juego:
 
     def snake_toggle_mute(self):
         self.silenciado = not self.silenciado
+        if self.silenciado:
+            self._detener_canal_audio()
+        elif self.musica_solicitada and self.musica_activa:
+            # Se desactivo el silencio: retoma la musica que estaba sonando
+            self.reproducir_musica(self.musica_solicitada, reiniciar=False)
 
     def reproducir_sonido(self, nombre_archivo):
-        """S10: reproduce una pista de audio corta, respetando el silencio (S08)."""
+        """S10: reproduce un efecto corto, respetando el silencio (S08)."""
         if self.silenciado:
             return
         if AUDIO_DISPONIBLE:
             try:
                 winsound.PlaySound(nombre_archivo, winsound.SND_FILENAME | winsound.SND_ASYNC)
+                # NOTA: winsound solo tiene UN canal de audio. Un efecto
+                # corto interrumpe la musica de fondo; se reprograma su
+                # reinicio poco despues para no dejarla en silencio.
+                if self.musica_activa and self.musica_solicitada:
+                    self.root.after(500, self._reanudar_musica_tras_efecto)
             except Exception:
                 # Si el archivo no existe o falla el driver de audio, el
                 # juego no debe interrumpirse por esto.
                 pass
+
+    def reproducir_musica(self, nombre_archivo, reiniciar=True):
+        """NUEVO: musica de fondo en bucle (SND_LOOP), tambien respeta el silencio."""
+        self.musica_solicitada = nombre_archivo
+        if reiniciar:
+            self.musica_activa = True
+        if self.silenciado:
+            return
+        if AUDIO_DISPONIBLE:
+            try:
+                winsound.PlaySound(nombre_archivo,
+                                    winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_LOOP)
+            except Exception:
+                pass
+
+    def detener_musica(self):
+        self.musica_activa = False
+        self._detener_canal_audio()
+
+    def _detener_canal_audio(self):
+        if AUDIO_DISPONIBLE:
+            try:
+                winsound.PlaySound(None, winsound.SND_PURGE)
+            except Exception:
+                pass
+
+    def _reanudar_musica_tras_efecto(self):
+        if self.musica_activa and not self.silenciado and self.musica_solicitada:
+            self.reproducir_musica(self.musica_solicitada, reiniciar=False)
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
