@@ -153,7 +153,10 @@ class Juego:
             self.pieza_actual = None
             self.pieza_x, self.pieza_y, self.pieza_rotacion = 0, 0, 0
             self.velocidad_gravedad = 0.4
+            self.velocidad_inicial_tetris = self.velocidad_gravedad
             self.ultima_pieza_tetris = None
+            self.nombre_pieza_tetris = None
+            self.piezas_fijadas_tetris = 0
             self.racha_tetris = 0
             self.multiplicador_tetris = 1
 
@@ -226,8 +229,12 @@ class Juego:
             self.pieza_actual = None
             self.pieza_x, self.pieza_y, self.pieza_rotacion = 0, 0, 0
             self.ultima_pieza_tetris = None
+            self.nombre_pieza_tetris = None
+            self.piezas_fijadas_tetris = 0
             self.racha_tetris = 0
             self.multiplicador_tetris = 1
+            self.velocidad_gravedad = self.velocidad_inicial_tetris
+            self.velocidad_base = self.velocidad_inicial_tetris
 
         self.mensaje_motivacional = None
         self.mensaje_motivacional_ticks = 0
@@ -345,11 +352,11 @@ class Juego:
                     self.dibujar_celda(x, y, COLOR_GRID_FIJA, glow=False)
 
         if self.tipo_juego == 'TETRIS' and self.pieza_actual:
-            matriz_pieza = self.pieza_actual[self.pieza_rotacion]
-            for y_offset, fila in enumerate(matriz_pieza):
-                for x_offset, celda in enumerate(fila):
-                    if celda == 1:
-                        self.dibujar_celda(self.pieza_x + x_offset, self.pieza_y + y_offset, COLOR_PIEZA)
+            patron_pieza = self._tetris_patron_pieza(self.nombre_pieza_tetris)
+            sombra_y = self._tetris_posicion_sombra()
+            if sombra_y is not None and sombra_y >= self.pieza_y:
+                self._tetris_dibujar_pieza(self.pieza_x, sombra_y, self.pieza_rotacion, patron_pieza, ghost=True)
+            self._tetris_dibujar_pieza(self.pieza_x, self.pieza_y, self.pieza_rotacion, patron_pieza)
 
         if self.tipo_juego == 'SNAKE':
             self._dibujar_snake()
@@ -410,6 +417,40 @@ class Juego:
                 ancho_esquina = max(2, borde_ancho)
             self.canvas.create_line(cx, cy, cx + largo * dx, cy, fill=color_esquina, width=ancho_esquina)
             self.canvas.create_line(cx, cy, cx, cy + largo * dy, fill=color_esquina, width=ancho_esquina)
+
+    def _tetris_patron_pieza(self, nombre_pieza):
+        if not nombre_pieza:
+            return None
+        base = nombre_pieza.split('_', 1)[0].upper()
+        if base == 'I':
+            return 'VLINES'
+        if base == 'O':
+            return 'DOTS'
+        if base == 'T':
+            return 'CROSS'
+        if base in ('J', 'L'):
+            return 'DIAGONAL'
+        if base in ('S', 'Z'):
+            return 'S'
+        return None
+
+    def _tetris_posicion_sombra(self):
+        if not self.pieza_actual:
+            return None
+        sombra_y = self.pieza_y
+        while not self.tetris_verificar_colision(self.pieza_x, sombra_y + 1, self.pieza_rotacion):
+            sombra_y += 1
+        return sombra_y
+
+    def _tetris_dibujar_pieza(self, x, y, rotacion, patron_pieza, ghost=False):
+        matriz_pieza = self.pieza_actual[rotacion]
+        color = COLOR_PIEZA
+        if ghost:
+            color = _atenuar_color(COLOR_PIEZA, 0.25)
+        for y_offset, fila in enumerate(matriz_pieza):
+            for x_offset, celda in enumerate(fila):
+                if celda == 1:
+                    self.dibujar_celda(x + x_offset, y + y_offset, color, patron_pieza, glow=not ghost, ghost=ghost)
 
     def _tetris_altura_apilada(self):
         """Devuelve la fraccion de altura ocupada por la pila fija en Tetris."""
@@ -498,7 +539,7 @@ class Juego:
         r, g, b = colorsys.hsv_to_rgb(hue, 1.0, 1.0)
         return '#%02X%02X%02X' % (int(r * 255), int(g * 255), int(b * 255))
 
-    def dibujar_celda(self, x, y, color, patron=None, glow=True):
+    def dibujar_celda(self, x, y, color, patron=None, glow=True, ghost=False):
         ts = self.taman_celda
         x1, y1 = x * ts, y * ts
         x2, y2 = x1 + ts, y1 + ts
@@ -506,19 +547,32 @@ class Juego:
         # NUEVO: efecto glow neon. Tkinter no soporta transparencia real,
         # asi que se simula dibujando 2 capas concentricas mas oscuras
         # detras de la celda principal (un "halo" que se funde con el fondo).
-        if glow:
+        if ghost:
+            fill_color = _atenuar_color(color, 0.18)
+            outline_color = _atenuar_color(COLOR_NEON_CYAN, 0.55)
+            self.canvas.create_rectangle(
+                x1 + 1, y1 + 1, x2 - 1, y2 - 1,
+                fill=fill_color, outline=outline_color, width=1,
+                dash=(3, 2), stipple='gray50'
+            )
+        elif glow:
             halo_ext = _atenuar_color(color, 0.22)
             halo_med = _atenuar_color(color, 0.45)
             self.canvas.create_rectangle(x1 - 3, y1 - 3, x2 + 3, y2 + 3, fill=halo_ext, outline='')
             self.canvas.create_rectangle(x1 - 1, y1 - 1, x2 + 1, y2 + 1, fill=halo_med, outline='')
 
         # Margen de 1px entre celdas para dar el efecto "bloques" pixel-art
-        self.canvas.create_rectangle(x1 + 1, y1 + 1, x2 - 1, y2 - 1, fill=color, outline=COLOR_BG, width=1)
+        if not ghost:
+            self.canvas.create_rectangle(x1 + 1, y1 + 1, x2 - 1, y2 - 1, fill=color, outline=COLOR_BG, width=1)
 
         # NUEVO: patrones dentro de la celda ademas del color (S02 / S06 /
         # rediseno visual). Ayuda tambien a usuarios con daltonismo, ya que
         # no dependen unicamente del color para distinguir elementos.
-        if patron == 'STRIPES':
+        if patron == 'VLINES':
+            for i in (1, 2):
+                lx = x1 + (i * ts // 3)
+                self.canvas.create_line(lx, y1 + 2, lx, y2 - 2, fill=COLOR_BG, width=1)
+        elif patron == 'STRIPES':
             for i in (1, 2):
                 ly = y1 + (i * ts // 3)
                 self.canvas.create_line(x1 + 2, ly, x2 - 2, ly, fill=COLOR_BG, width=1)
@@ -526,6 +580,22 @@ class Juego:
             cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
             r = ts // 6
             self.canvas.create_oval(cx - r, cy - r, cx + r, cy + r, fill=COLOR_BG, outline='')
+        elif patron == 'CROSS':
+            self.canvas.create_line(x1 + 3, y1 + 3, x2 - 3, y2 - 3, fill=COLOR_BG, width=2)
+            self.canvas.create_line(x1 + 3, y2 - 3, x2 - 3, y1 + 3, fill=COLOR_BG, width=2)
+        elif patron == 'DIAGONAL':
+            self.canvas.create_line(x1 + 2, y2 - 3, x2 - 3, y1 + 2, fill=COLOR_BG, width=2)
+            self.canvas.create_line(x1 + 5, y2 - 1, x2 - 1, y1 + 5, fill=COLOR_BG, width=1)
+        elif patron == 'S':
+            puntos = [
+                x1 + 3, y1 + 5,
+                x1 + 7, y1 + 2,
+                x2 - 4, y1 + 5,
+                x2 - 7, y1 + 10,
+                x1 + 5, y2 - 5,
+                x1 + 2, y2 - 2,
+            ]
+            self.canvas.create_line(*puntos, fill=COLOR_BG, width=2, smooth=True, splinesteps=12)
 
     def _dibujar_overlay_inicio(self):
         """NUEVO: pantalla de bienvenida, se muestra hasta que se presiona ENTER."""
@@ -648,6 +718,13 @@ class Juego:
         self.puntuacion += puntos
         self._disparar_mensaje_motivacional()
 
+    def _tetris_actualizar_velocidad(self):
+        base_inicial = getattr(self, 'velocidad_inicial_tetris', self.velocidad_gravedad)
+        velocidad_natural = max(0.12, base_inicial * (0.96 ** self.piezas_fijadas_tetris))
+        self.velocidad_base = velocidad_natural
+        if not self.efecto_activo:
+            self.velocidad_gravedad = velocidad_natural
+
     # ------------------------------------------------------------------
     # EVENTOS / ACCIONES DEL DSL
     # ------------------------------------------------------------------
@@ -695,6 +772,7 @@ class Juego:
             nombres_piezas = [nombre for nombre in nombres_piezas if nombre != self.ultima_pieza_tetris]
         nombre_pieza = random.choice(nombres_piezas)
         self.ultima_pieza_tetris = nombre_pieza
+        self.nombre_pieza_tetris = nombre_pieza
         self.pieza_actual = self.datos_juego['shapes'][nombre_pieza]
         self.pieza_x, self.pieza_y, self.pieza_rotacion = self.ancho // 2 - 2, 0, 0
         if self.tetris_verificar_colision(self.pieza_x, self.pieza_y, self.pieza_rotacion):
@@ -729,6 +807,8 @@ class Juego:
                         self.grid[self.pieza_y + y_offset][self.pieza_x + x_offset] = 1
         self._tetris_registrar_racha()
         self._tetris_sumar_puntos(10)
+        self.piezas_fijadas_tetris += 1
+        self._tetris_actualizar_velocidad()
         self.pieza_actual = None
         self.tetris_limpiar_lineas()
         self.ejecutar_evento('ON_START')
