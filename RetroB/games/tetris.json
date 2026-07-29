@@ -1,4 +1,5 @@
 {
+  "stage_colors": [], 
   "shapes": {
     "T_PIECE": [
       [
@@ -196,6 +197,7 @@
     ]
   }, 
   "tipo_juego": "TETRIS", 
+  "fruits": {}, 
   "config": {
     "grid_size": [
       10, 

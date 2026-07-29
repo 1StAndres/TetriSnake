@@ -74,6 +74,12 @@ class Juego:
         self.musica_solicitada = None
         self.musica_activa = False
 
+        # Estado temporal compartido por todos los juegos. Tetris también
+        # pasa por el mismo loop de actualizacion, asi que estos campos deben
+        # existir desde el inicio.
+        self.efecto_activo = None
+        self.efecto_ticks_restantes = 0
+
         # NUEVO: parpadeo tipo arcade ("PRESS START") para textos de HUD
         self.blink_contador = 0
         self.blink_state = True
@@ -142,6 +148,7 @@ class Juego:
             self.pieza_actual = None
             self.pieza_x, self.pieza_y, self.pieza_rotacion = 0, 0, 0
             self.velocidad_gravedad = 0.4
+            self.ultima_pieza_tetris = None
 
         if self.tipo_juego == 'SNAKE':
             self.serpiente_cuerpo = []
@@ -211,6 +218,7 @@ class Juego:
         if self.tipo_juego == 'TETRIS':
             self.pieza_actual = None
             self.pieza_x, self.pieza_y, self.pieza_rotacion = 0, 0, 0
+            self.ultima_pieza_tetris = None
 
         if self.tipo_juego == 'SNAKE':
             self.serpiente_cuerpo = []
@@ -220,8 +228,9 @@ class Juego:
             self.contador_frutas = {}
             self.racha_actual = 0
             self.rainbow_offset = 0.0
-            self.efecto_activo = None
-            self.efecto_ticks_restantes = 0
+
+        self.efecto_activo = None
+        self.efecto_ticks_restantes = 0
 
         # Reutiliza ON_START tal cual (vuelve a spawnear jugador/comida,
         # y si el .brick tiene PLAY_MUSIC, la musica arranca de nuevo)
@@ -555,7 +564,11 @@ class Juego:
     # ------------------------------------------------------------------
 
     def tetris_spawn_pieza(self):
-        nombre_pieza = random.choice(list(self.datos_juego['shapes'].keys()))
+        nombres_piezas = list(self.datos_juego['shapes'].keys())
+        if getattr(self, 'ultima_pieza_tetris', None) in nombres_piezas and len(nombres_piezas) > 1:
+            nombres_piezas = [nombre for nombre in nombres_piezas if nombre != self.ultima_pieza_tetris]
+        nombre_pieza = random.choice(nombres_piezas)
+        self.ultima_pieza_tetris = nombre_pieza
         self.pieza_actual = self.datos_juego['shapes'][nombre_pieza]
         self.pieza_x, self.pieza_y, self.pieza_rotacion = self.ancho // 2 - 2, 0, 0
         if self.tetris_verificar_colision(self.pieza_x, self.pieza_y, self.pieza_rotacion):
