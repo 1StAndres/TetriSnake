@@ -80,6 +80,11 @@ class Juego:
         self.efecto_activo = None
         self.efecto_ticks_restantes = 0
 
+        # Popup motivacional reutilizado por Tetris.
+        self.mensaje_motivacional = None
+        self.mensaje_motivacional_ticks = 0
+        self.ultimo_hito_motivacional = 0
+
         # NUEVO: parpadeo tipo arcade ("PRESS START") para textos de HUD
         self.blink_contador = 0
         self.blink_state = True
@@ -149,6 +154,8 @@ class Juego:
             self.pieza_x, self.pieza_y, self.pieza_rotacion = 0, 0, 0
             self.velocidad_gravedad = 0.4
             self.ultima_pieza_tetris = None
+            self.racha_tetris = 0
+            self.multiplicador_tetris = 1
 
         if self.tipo_juego == 'SNAKE':
             self.serpiente_cuerpo = []
@@ -219,6 +226,12 @@ class Juego:
             self.pieza_actual = None
             self.pieza_x, self.pieza_y, self.pieza_rotacion = 0, 0, 0
             self.ultima_pieza_tetris = None
+            self.racha_tetris = 0
+            self.multiplicador_tetris = 1
+
+        self.mensaje_motivacional = None
+        self.mensaje_motivacional_ticks = 0
+        self.ultimo_hito_motivacional = 0
 
         if self.tipo_juego == 'SNAKE':
             self.serpiente_cuerpo = []
@@ -253,6 +266,8 @@ class Juego:
                 self.timer_gravedad = 0
                 self.ejecutar_evento('ON_TICK')
                 self._actualizar_efecto_temporal()
+
+            self._actualizar_mensaje_motivacional()
 
             # NUEVO: el arcoiris fluye con el tiempo, no solo con el movimiento
             if self.tipo_juego == 'SNAKE':
@@ -341,6 +356,19 @@ class Juego:
             self.label_racha.config(text=str(self.racha_actual) + "\n" + self._texto_barra_racha())
             self.label_frutas.config(text=self._texto_contador_frutas())
             self.label_estado.config(text=self._texto_estado())
+        elif self.tipo_juego == 'TETRIS':
+            self.label_racha.config(text="RACHA\n" + str(self.racha_tetris) + " PIEZAS\nMULT x" + str(self.multiplicador_tetris))
+            self.label_frutas.config(text="")
+            if self.mensaje_motivacional and self.mensaje_motivacional_ticks > 0:
+                self.label_estado.config(text=self.mensaje_motivacional)
+                self.canvas.create_text(
+                    self.ancho_canvas // 2, 24,
+                    text=self.mensaje_motivacional,
+                    fill=COLOR_NEON_YELLOW,
+                    font=('Consolas', 14, 'bold')
+                )
+            else:
+                self.label_estado.config(text="")
 
         # NUEVO: textura sutil tipo pantalla CRT sobre todo el tablero
         self.canvas.create_rectangle(0, 0, self.ancho_canvas, self.alto_canvas,
@@ -527,6 +555,45 @@ class Juego:
             estados.append("EFECTO: " + self.efecto_activo)
         return "\n".join(estados)
 
+    def _hito_motivacional(self, puntuacion):
+        if puntuacion <= 0:
+            return 0
+        if puntuacion <= 100:
+            return (puntuacion // 10) * 10
+        return 100 + (((puntuacion - 100) // 50) * 50)
+
+    def _texto_motivacional(self, hito):
+        if hito < 50:
+            return "¡BIEN!"
+        if hito < 100:
+            return "¡SIGUE ASI!"
+        if hito == 100:
+            return "¡EXCELENTE!"
+        return "¡IMPARABLE!"
+
+    def _actualizar_mensaje_motivacional(self):
+        if self.mensaje_motivacional_ticks <= 0:
+            return
+        self.mensaje_motivacional_ticks -= 1
+        if self.mensaje_motivacional_ticks <= 0:
+            self.mensaje_motivacional = None
+
+    def _disparar_mensaje_motivacional(self):
+        hito = self._hito_motivacional(self.puntuacion)
+        if hito > self.ultimo_hito_motivacional:
+            self.ultimo_hito_motivacional = hito
+            self.mensaje_motivacional = self._texto_motivacional(hito)
+            self.mensaje_motivacional_ticks = 24
+
+    def _tetris_registrar_racha(self):
+        self.racha_tetris += 1
+        self.multiplicador_tetris = 2 if self.racha_tetris > 3 else 1
+
+    def _tetris_sumar_puntos(self, puntos_base):
+        puntos = puntos_base * self.multiplicador_tetris
+        self.puntuacion += puntos
+        self._disparar_mensaje_motivacional()
+
     # ------------------------------------------------------------------
     # EVENTOS / ACCIONES DEL DSL
     # ------------------------------------------------------------------
@@ -536,7 +603,12 @@ class Juego:
             for accion in self.datos_juego['events'][nombre_evento]:
                 verbo, objeto = accion.get('accion'), accion.get('objeto')
 
-                if verbo == 'INCREASE_SCORE': self.puntuacion += int(objeto)
+                if verbo == 'INCREASE_SCORE':
+                    if self.tipo_juego == 'TETRIS':
+                        self._tetris_sumar_puntos(int(objeto))
+                    else:
+                        self.puntuacion += int(objeto)
+                    continue
                 if verbo == 'GAME_OVER':
                     self.juego_terminado = True
                     self.detener_musica()  # deja el canal libre para el sonido de derrota
@@ -573,6 +645,8 @@ class Juego:
         self.pieza_x, self.pieza_y, self.pieza_rotacion = self.ancho // 2 - 2, 0, 0
         if self.tetris_verificar_colision(self.pieza_x, self.pieza_y, self.pieza_rotacion):
             self.juego_terminado = True
+            self.racha_tetris = 0
+            self.multiplicador_tetris = 1
 
     def tetris_mover_pieza(self, direccion):
         if not self.pieza_actual: return
@@ -599,6 +673,8 @@ class Juego:
                 if celda == 1:
                     if 0 <= self.pieza_y + y_offset < self.alto and 0 <= self.pieza_x + x_offset < self.ancho:
                         self.grid[self.pieza_y + y_offset][self.pieza_x + x_offset] = 1
+        self._tetris_registrar_racha()
+        self._tetris_sumar_puntos(10)
         self.pieza_actual = None
         self.tetris_limpiar_lineas()
         self.ejecutar_evento('ON_START')
