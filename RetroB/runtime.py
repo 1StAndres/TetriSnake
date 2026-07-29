@@ -395,12 +395,66 @@ class Juego:
     def _dibujar_marco_hud(self):
         """NUEVO: borde neon + esquinas estilo HUD de arcade alrededor del tablero."""
         w, h = self.ancho_canvas, self.alto_canvas
-        self.canvas.create_rectangle(2, 2, w - 2, h - 2, outline=COLOR_NEON_CYAN, width=2)
+        borde_color = COLOR_NEON_CYAN
+        borde_ancho = 2
+        if self.tipo_juego == 'TETRIS':
+            borde_color, borde_ancho = self._tetris_color_borde_alarma()
+        self.canvas.create_rectangle(2, 2, w - 2, h - 2, outline=borde_color, width=borde_ancho)
         largo = 14
         esquinas = [(2, 2, 1, 1), (w - 2, 2, -1, 1), (2, h - 2, 1, -1), (w - 2, h - 2, -1, -1)]
         for cx, cy, dx, dy in esquinas:
-            self.canvas.create_line(cx, cy, cx + largo * dx, cy, fill=COLOR_NEON_MAGENTA, width=3)
-            self.canvas.create_line(cx, cy, cx, cy + largo * dy, fill=COLOR_NEON_MAGENTA, width=3)
+            color_esquina = COLOR_NEON_MAGENTA
+            ancho_esquina = 3
+            if self.tipo_juego == 'TETRIS':
+                color_esquina = borde_color
+                ancho_esquina = max(2, borde_ancho)
+            self.canvas.create_line(cx, cy, cx + largo * dx, cy, fill=color_esquina, width=ancho_esquina)
+            self.canvas.create_line(cx, cy, cx, cy + largo * dy, fill=color_esquina, width=ancho_esquina)
+
+    def _tetris_altura_apilada(self):
+        """Devuelve la fraccion de altura ocupada por la pila fija en Tetris."""
+        if self.tipo_juego != 'TETRIS':
+            return 0.0
+        fila_minima = None
+        for y, fila in enumerate(self.grid):
+            if any(celda == 1 for celda in fila):
+                fila_minima = y
+                break
+        if fila_minima is None:
+            return 0.0
+        altura_ocupada = self.alto - fila_minima
+        return altura_ocupada / float(self.alto)
+
+    def _mezclar_color(self, color_a, color_b, factor):
+        """Mezcla dos colores hexadecimales con factor entre 0.0 y 1.0."""
+        factor = max(0.0, min(1.0, factor))
+        color_a = color_a.lstrip('#')
+        color_b = color_b.lstrip('#')
+        ra = int(color_a[0:2], 16)
+        ga = int(color_a[2:4], 16)
+        ba = int(color_a[4:6], 16)
+        rb = int(color_b[0:2], 16)
+        gb = int(color_b[2:4], 16)
+        bb = int(color_b[4:6], 16)
+        r = int(ra + (rb - ra) * factor)
+        g = int(ga + (gb - ga) * factor)
+        b = int(ba + (bb - ba) * factor)
+        return '#%02X%02X%02X' % (r, g, b)
+
+    def _tetris_color_borde_alarma(self):
+        """Devuelve color y grosor del borde segun la altura de la pila."""
+        ocupacion = self._tetris_altura_apilada()
+        if ocupacion < 0.70:
+            return COLOR_NEON_CYAN, 2
+
+        progreso = (ocupacion - 0.70) / 0.25
+        progreso = max(0.0, min(1.0, progreso))
+        if self.blink_state:
+            color_base = self._mezclar_color(COLOR_NEON_CYAN, COLOR_NEON_RED, progreso)
+        else:
+            color_base = self._mezclar_color(COLOR_NEON_CYAN, COLOR_TEXT_DIM, 0.15 + progreso * 0.35)
+        ancho = 2 + int(progreso * 2)
+        return color_base, ancho
 
     def _dibujar_snake(self):
         # S04-S06: la comida se dibuja con el color y el patron de su tipo de fruta
