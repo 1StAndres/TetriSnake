@@ -4,8 +4,10 @@
 
 import sys
 import json
+import os
 import random
 import colorsys
+import ctypes
 
 import Tkinter as tk
 
@@ -57,6 +59,8 @@ class Juego:
     def __init__(self, datos_juego):
         self.datos_juego = datos_juego
         self.tipo_juego = self.datos_juego.get('tipo_juego', 'TETRIS')
+        self.tetris_soundtrack = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'SoundTrack_Tetris.mp3')
+        self.musica_backend = None
         config = self.datos_juego.get('config', {})
         self.ancho = config.get('grid_size', [10, 20])[0]
         self.alto = config.get('grid_size', [10, 20])[1]
@@ -211,6 +215,8 @@ class Juego:
     def iniciar_juego(self):
         """NUEVO: se llama al presionar ENTER en la pantalla de inicio."""
         self.juego_iniciado = True
+        if self.tipo_juego == 'TETRIS':
+            self.reproducir_musica(self.tetris_soundtrack)
         self.ejecutar_evento('ON_START')
 
     def reiniciar_juego(self):
@@ -251,6 +257,9 @@ class Juego:
 
         self.efecto_activo = None
         self.efecto_ticks_restantes = 0
+
+        if self.tipo_juego == 'TETRIS':
+            self.reproducir_musica(self.tetris_soundtrack)
 
         # Reutiliza ON_START tal cual (vuelve a spawnear jugador/comida,
         # y si el .brick tiene PLAY_MUSIC, la musica arranca de nuevo)
@@ -954,10 +963,9 @@ class Juego:
         if AUDIO_DISPONIBLE:
             try:
                 winsound.PlaySound(nombre_archivo, winsound.SND_FILENAME | winsound.SND_ASYNC)
-                # NOTA: winsound solo tiene UN canal de audio. Un efecto
-                # corto interrumpe la musica de fondo; se reprograma su
-                # reinicio poco despues para no dejarla en silencio.
-                if self.musica_activa and self.musica_solicitada:
+                # Solo reaprende la musica si usa winsound como backend; el
+                # soundtrack MP3 de Tetris usa MCI y no se interrumpe.
+                if self.musica_backend == 'winsound' and self.musica_activa and self.musica_solicitada:
                     self.root.after(500, self._reanudar_musica_tras_efecto)
             except Exception:
                 # Si el archivo no existe o falla el driver de audio, el
@@ -971,20 +979,34 @@ class Juego:
             self.musica_activa = True
         if self.silenciado:
             return
-        if AUDIO_DISPONIBLE:
+        if AUDIO_DISPONIBLE and nombre_archivo:
             try:
-                winsound.PlaySound(nombre_archivo,
-                                    winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_LOOP)
+                extension = os.path.splitext(nombre_archivo)[1].lower()
+                if extension == '.mp3' and os.path.exists(nombre_archivo):
+                    self._detener_canal_audio()
+                    self.musica_backend = 'mci'
+                    ruta = os.path.abspath(nombre_archivo)
+                    comando_abrir = 'open "%s" type mpegvideo alias brickscript_music' % ruta
+                    ctypes.windll.winmm.mciSendStringA('close brickscript_music', None, 0, None)
+                    ctypes.windll.winmm.mciSendStringA(comando_abrir, None, 0, None)
+                    ctypes.windll.winmm.mciSendStringA('play brickscript_music repeat', None, 0, None)
+                else:
+                    self.musica_backend = 'winsound'
+                    winsound.PlaySound(nombre_archivo,
+                                        winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_LOOP)
             except Exception:
                 pass
 
     def detener_musica(self):
         self.musica_activa = False
+        self.musica_backend = None
         self._detener_canal_audio()
 
     def _detener_canal_audio(self):
         if AUDIO_DISPONIBLE:
             try:
+                ctypes.windll.winmm.mciSendStringA('stop brickscript_music', None, 0, None)
+                ctypes.windll.winmm.mciSendStringA('close brickscript_music', None, 0, None)
                 winsound.PlaySound(None, winsound.SND_PURGE)
             except Exception:
                 pass
